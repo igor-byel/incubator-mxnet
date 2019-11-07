@@ -2060,7 +2060,7 @@ void NDArray::SyncCheckFormat(const bool full_check) const {
   CHECK_EQ(err, kNormalErr) << "Check the validity of this sparse NDArray";
 }
 
-#if MXNET_PREDICT_ONLY == 0
+#if MXNET_PREDICT_ONLY == 0 || MXNET_CPU_SINGLE_THREAD==1
 // register API function
 // those with underscore will be registered at NDArray
 MXNET_REGISTER_NDARRAY_FUN(_set_value)
