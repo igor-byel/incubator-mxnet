@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.0.2)
 
+set(ENV{MKLROOT} "/opt/intel/mkl")
+
 # workaround to store CMAKE_CROSSCOMPILING because is getting reset by the project command
 if(CMAKE_CROSSCOMPILING)
   set(__CMAKE_CROSSCOMPILING ${CMAKE_CROSSCOMPILING})
@@ -19,15 +21,17 @@ endif()
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Utils.cmake)
 
 #Some things have order. This must be put in front alone
-mxnet_option(USE_CUDA             "Build with CUDA support"   ON)
-mxnet_option(USE_OLDCMAKECUDA     "Build with old cmake cuda" OFF)
+
+mxnet_option(USE_CPU_SINGLE_THREAD    "Build single thread lib"   ON)
+mxnet_option(USE_CUDA             "Build with CUDA support"   ON  IF NOT  USE_CPU_SINGLE_THREAD)
+mxnet_option(USE_OLDCMAKECUDA     "Build with old cmake cuda" ON  IF NOT  USE_CPU_SINGLE_THREAD)
 mxnet_option(USE_NCCL             "Use NVidia NCCL with CUDA" OFF)
-mxnet_option(USE_OPENCV           "Build with OpenCV support" ON)
-mxnet_option(USE_OPENMP           "Build with Openmp support" ON)
-mxnet_option(USE_CUDNN            "Build with cudnn support"  ON) # one could set CUDNN_ROOT for search path
+mxnet_option(USE_OPENCV           "Build with OpenCV support" OFF)
+mxnet_option(USE_OPENMP           "Build with Openmp support" ON IF NOT  USE_CPU_SINGLE_THREAD)
+mxnet_option(USE_CUDNN            "Build with cudnn support"  ON IF NOT  USE_CPU_SINGLE_THREAD) # one could set CUDNN_ROOT for search path
 mxnet_option(USE_SSE              "Build with x86 SSE instruction support" ON IF NOT ARM)
 mxnet_option(USE_F16C             "Build with x86 F16C instruction support" ON) # autodetects support if ON
-mxnet_option(USE_LAPACK           "Build with lapack support" ON)
+mxnet_option(USE_LAPACK           "Build with lapack support" ON  IF NOT  USE_CPU_SINGLE_THREAD)
 mxnet_option(USE_MKL_IF_AVAILABLE "Use MKL if found" ON)
 mxnet_option(USE_MKLML_MKL        "Use MKLDNN variant of MKL (if MKL found)" ON IF USE_MKL_IF_AVAILABLE AND (NOT APPLE) AND (NOT MSVC) )
 mxnet_option(USE_MKLDNN           "Use MKLDNN variant of MKL (if MKL found)" ON IF USE_MKL_IF_AVAILABLE AND (NOT APPLE) AND (NOT MSVC) AND (CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64") AND (NOT CMAKE_CROSSCOMPILING))
@@ -38,16 +42,16 @@ mxnet_option(USE_PROFILER         "Build with Profiler support"   ON)
 mxnet_option(USE_DIST_KVSTORE     "Build with DIST_KVSTORE support" OFF)
 mxnet_option(USE_PLUGINS_WARPCTC  "Use WARPCTC Plugins" OFF)
 mxnet_option(USE_PLUGIN_CAFFE     "Use Caffe Plugin" OFF)
-mxnet_option(USE_CPP_PACKAGE      "Build C++ Package" OFF)
+mxnet_option(USE_CPP_PACKAGE      "Build C++ Package" ON  IF USE_CPU_SINGLE_THREAD)
 mxnet_option(USE_MXNET_LIB_NAMING "Use MXNet library naming conventions." ON)
 mxnet_option(USE_GPROF            "Compile with gprof (profiling) flag" OFF)
 mxnet_option(USE_CXX14_IF_AVAILABLE "Build with C++14 if the compiler supports it" OFF)
 mxnet_option(USE_VTUNE            "Enable use of Intel Amplifier XE (VTune)" OFF) # one could set VTUNE_ROOT for search path
-mxnet_option(ENABLE_CUDA_RTC      "Build with CUDA runtime compilation support" ON)
+mxnet_option(ENABLE_CUDA_RTC      "Build with CUDA runtime compilation support" OFF)
 mxnet_option(BUILD_CPP_EXAMPLES   "Build cpp examples" ON)
 mxnet_option(INSTALL_EXAMPLES     "Install the example source files." OFF)
 mxnet_option(USE_SIGNAL_HANDLER   "Print stack traces on segfaults." ON)
-mxnet_option(USE_TENSORRT         "Enable inference optimization with TensorRT." OFF)
+mxnet_option(USE_TENSORRT         "Enable infeference optimization with TensorRT." OFF)
 mxnet_option(USE_ASAN             "Enable Clang/GCC ASAN sanitizers." OFF)
 mxnet_option(ENABLE_TESTCOVERAGE  "Enable compilation with test coverage metric output" OFF)
 mxnet_option(USE_INT64_TENSOR_SIZE "Use int64_t to represent the total number of elements in a tensor" OFF)
@@ -58,17 +62,24 @@ message(STATUS "CMAKE_HOST_SYSTEM_PROCESSOR ${CMAKE_HOST_SYSTEM_PROCESSOR}")
 message(STATUS "CMAKE_SYSTEM_PROCESSOR ${CMAKE_SYSTEM_PROCESSOR}")
 
 message(STATUS "CMAKE_SYSTEM_NAME ${CMAKE_SYSTEM_NAME}")
+
+if(USE_CPU_SINGLE_THREAD)
+  add_definitions(-DMXNET_PREDICT_ONLY=1)
+  add_definitions(-DMXNET_CPU_SINGLE_THREAD=1)
+endif()
+
+
 if(USE_CUDA AND NOT USE_OLDCMAKECUDA)
   message(STATUS "CMake version '${CMAKE_VERSION}' using generator '${CMAKE_GENERATOR}'")
   if(
-      (
-        (${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
-        OR (${CMAKE_GENERATOR} MATCHES "Xcode.*")
-        OR (${CMAKE_GENERATOR} STREQUAL "Unix Makefiles")
-      ) AND (
-        (${CMAKE_VERSION} VERSION_GREATER "3.9.0") OR (${CMAKE_VERSION} VERSION_EQUAL "3.9.0")
-      )
-    )
+  (
+  (${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
+          OR (${CMAKE_GENERATOR} MATCHES "Xcode.*")
+          OR (${CMAKE_GENERATOR} STREQUAL "Unix Makefiles")
+  ) AND (
+  (${CMAKE_VERSION} VERSION_GREATER "3.9.0") OR (${CMAKE_VERSION} VERSION_EQUAL "3.9.0")
+  )
+  )
     set(FIRST_CUDA TRUE)
     project(mxnet C CXX CUDA)
   else()
@@ -95,6 +106,7 @@ if("$ENV{VERBOSE}" STREQUAL "1")
   message(STATUS " Verbose Makefile ACTIVATED")
   set(CMAKE_VERBOSE_MAKEFILE ON)
 endif()
+
 
 
 if(MSVC)
@@ -348,7 +360,7 @@ endif()
 list(APPEND mxnet_LINKER_LIBS ${mshadow_LINKER_LIBS})
 
 foreach(var ${C_CXX_INCLUDE_DIRECTORIES})
-    include_directories(${var})
+  include_directories(${var})
 endforeach()
 
 include_directories("include")
@@ -434,9 +446,9 @@ if(USE_OPENMP)
   # This should build on Windows, but there's some problem and I don't have a Windows box, so
   # could a Windows user please fix?
   if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/openmp/CMakeLists.txt
-     AND SYSTEM_ARCHITECTURE STREQUAL "x86_64"
-     AND NOT MSVC
-     AND NOT CMAKE_CROSSCOMPILING)
+          AND SYSTEM_ARCHITECTURE STREQUAL "x86_64"
+          AND NOT MSVC
+          AND NOT CMAKE_CROSSCOMPILING)
 
     # Intel/llvm OpenMP: https://github.com/llvm-mirror/openmp
     set(OPENMP_STANDALONE_BUILD TRUE)
@@ -502,7 +514,7 @@ if(USE_CUDNN AND USE_CUDA)
     add_definitions(-DUSE_CUDNN)
     include_directories(SYSTEM ${CUDNN_INCLUDE})
     list(APPEND mxnet_LINKER_LIBS ${CUDNN_LIBRARY})
-      add_definitions(-DMSHADOW_USE_CUDNN=1)
+    add_definitions(-DMSHADOW_USE_CUDNN=1)
   endif()
 endif()
 
@@ -518,13 +530,13 @@ FILE(GLOB_RECURSE CUDA "src/*.cu" "src/*.cuh")
 
 # add nnvm to source
 FILE(GLOB_RECURSE NNVMSOURCE
-  3rdparty/tvm/nnvm/src/c_api/*.cc
-  3rdparty/tvm/nnvm/src/core/*.cc
-  3rdparty/tvm/nnvm/src/pass/*.cc
-  3rdparty/tvm/nnvm/src/c_api/*.h
-  3rdparty/tvm/nnvm/src/core/*.h
-  3rdparty/tvm/nnvm/src/pass/*.h
-  3rdparty/tvm/nnvm/include/*.h)
+        3rdparty/tvm/nnvm/src/c_api/*.cc
+        3rdparty/tvm/nnvm/src/core/*.cc
+        3rdparty/tvm/nnvm/src/pass/*.cc
+        3rdparty/tvm/nnvm/src/c_api/*.h
+        3rdparty/tvm/nnvm/src/core/*.h
+        3rdparty/tvm/nnvm/src/pass/*.h
+        3rdparty/tvm/nnvm/include/*.h)
 list(APPEND SOURCE ${NNVMSOURCE})
 
 # add mshadow file
@@ -537,21 +549,21 @@ list(APPEND CUDA ${MSHADOW_CUDASOURCE})
 FILE(GLOB_RECURSE GROUP_SOURCE "src/*.cc" "3rdparty/tvm/nnvm/*.cc" "plugin/*.cc")
 FILE(GLOB_RECURSE GROUP_Include "src/*.h" "3rdparty/tvm/nnvm/*.h" "3rdparty/mshadow/mshadow/*.h" "plugin/*.h")
 FILE(GLOB_RECURSE GROUP_CUDA "src/*.cu" "src/*.cuh" "3rdparty/mshadow/mshadow/*.cuh" "plugin/*.cu"
-  "plugin/*.cuh" "3rdparty/nvidia_cub/cub/*.cuh")
+        "plugin/*.cuh" "3rdparty/nvidia_cub/cub/*.cuh")
 assign_source_group("Source" ${GROUP_SOURCE})
 assign_source_group("Include" ${GROUP_Include})
 assign_source_group("CUDA" ${GROUP_CUDA})
 
 if(USE_PLUGINS_WARPCTC)
-    set(WARPCTC_INCLUDE  "" CACHE PATH "WARPCTC include")
-    set(WARPCTC_LIB_DEBUG  "" CACHE FILEPATH "WARPCTC lib")
-    set(WARPCTC_LIB_RELEASE  "" CACHE FILEPATH "WARPCTC lib")
-    include_directories(SYSTEM ${WARPCTC_INCLUDE})
-    list(APPEND mxnet_LINKER_LIBS ${WARPCTC_LIB})
-    FILE(GLOB_RECURSE PLUGINS_SOURCE "plugin/warpctc/*.cc" "plugin/warpctc/*.h")
-    FILE(GLOB_RECURSE PLUGINS_CUSRC "plugin/warpctc/*.cu")
-    list(APPEND SOURCE ${PLUGINS_SOURCE})
-    list(APPEND CUDA ${PLUGINS_CUSRC})
+  set(WARPCTC_INCLUDE  "" CACHE PATH "WARPCTC include")
+  set(WARPCTC_LIB_DEBUG  "" CACHE FILEPATH "WARPCTC lib")
+  set(WARPCTC_LIB_RELEASE  "" CACHE FILEPATH "WARPCTC lib")
+  include_directories(SYSTEM ${WARPCTC_INCLUDE})
+  list(APPEND mxnet_LINKER_LIBS ${WARPCTC_LIB})
+  FILE(GLOB_RECURSE PLUGINS_SOURCE "plugin/warpctc/*.cc" "plugin/warpctc/*.h")
+  FILE(GLOB_RECURSE PLUGINS_CUSRC "plugin/warpctc/*.cu")
+  list(APPEND SOURCE ${PLUGINS_SOURCE})
+  list(APPEND CUDA ${PLUGINS_CUSRC})
 endif()
 
 if(USE_OPERATOR_TUNING AND USE_OPENMP)
@@ -587,24 +599,24 @@ if(USE_PLUGIN_CAFFE)
   include_directories(${CMAKE_BINARY_DIR}/include)
   add_definitions(-DMXNET_USE_CAFFE=1)
   list(APPEND mxnet_LINKER_LIBS
-    protobuf boost_system boost_thread boost_filesystem
-    gflags glog caffe
-    ${Caffe_LINKER_LIBS}
-)
+          protobuf boost_system boost_thread boost_filesystem
+          gflags glog caffe
+          ${Caffe_LINKER_LIBS}
+          )
 endif()
 
 if (NOT (EXTRA_OPERATORS STREQUAL ""))
-    mxnet_source_group("Extra"   GLOB_RECURSE "${EXTRA_OPERATORS}/*.cc")
-    mxnet_source_group("Extra\\Cuda"   GLOB_RECURSE "${EXTRA_OPERATORS}/*.cu")
-    FILE(GLOB_RECURSE EXTRA_SRC "${EXTRA_OPERATORS}/*.cc")
-    FILE(GLOB_RECURSE EXTRA_CUSRC "${EXTRA_OPERATORS}/*.cu")
-    list(APPEND SOURCE ${EXTRA_SRC} ${EXTRA_CUSRC})
+  mxnet_source_group("Extra"   GLOB_RECURSE "${EXTRA_OPERATORS}/*.cc")
+  mxnet_source_group("Extra\\Cuda"   GLOB_RECURSE "${EXTRA_OPERATORS}/*.cu")
+  FILE(GLOB_RECURSE EXTRA_SRC "${EXTRA_OPERATORS}/*.cc")
+  FILE(GLOB_RECURSE EXTRA_CUSRC "${EXTRA_OPERATORS}/*.cu")
+  list(APPEND SOURCE ${EXTRA_SRC} ${EXTRA_CUSRC})
 endif()
 
 if(MSVC)
   foreach(flag_var
-        CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
-        CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+          CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
+          CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
     if(${flag_var} MATCHES "/MD")
       string(REGEX REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")
     endif(${flag_var} MATCHES "/MD")
@@ -618,8 +630,8 @@ if(USE_CUDA)
     set(CMAKE_CUDA_FLAGS "${NVCC_FLAGS_ARCH}")
     list(APPEND mxnet_LINKER_LIBS cublas cufft cusolver curand)
     if(ENABLE_CUDA_RTC)
-        list(APPEND mxnet_LINKER_LIBS nvrtc cuda)
-        add_definitions(-DMXNET_ENABLE_CUDA_RTC=1)
+      list(APPEND mxnet_LINKER_LIBS nvrtc cuda)
+      add_definitions(-DMXNET_ENABLE_CUDA_RTC=1)
     endif()
     list(APPEND SOURCE ${CUDA})
     add_definitions(-DMXNET_USE_CUDA=1)
@@ -629,42 +641,42 @@ if(USE_CUDA)
     # define preprocessor macro so that we will not include the generated forcelink header
     mshadow_cuda_compile(cuda_objs ${CUDA})
     if(MSVC)
-        if(ENABLE_CUDA_RTC)
-            FIND_LIBRARY(CUDA_nvrtc_LIBRARY nvrtc "${CUDA_TOOLKIT_ROOT_DIR}/lib/x64"  "${CUDA_TOOLKIT_ROOT_DIR}/lib/win32")
-            list(APPEND mxnet_LINKER_LIBS ${CUDA_nvrtc_LIBRARY})
-            set(CUDA_cuda_LIBRARY "${CUDA_nvrtc_LIBRARY}/../cuda.lib")
-            list(APPEND mxnet_LINKER_LIBS ${CUDA_cuda_LIBRARY})
-            add_definitions(-DMXNET_ENABLE_CUDA_RTC=1)
-        endif()
-        FIND_LIBRARY(CUDA_cufft_LIBRARY nvrtc "${CUDA_TOOLKIT_ROOT_DIR}/lib/x64"  "${CUDA_TOOLKIT_ROOT_DIR}/lib/win32")
-        list(APPEND mxnet_LINKER_LIBS "${CUDA_cufft_LIBRARY}/../cufft.lib") # For fft operator
-        FIND_LIBRARY(CUDA_cusolver_LIBRARY nvrtc "${CUDA_TOOLKIT_ROOT_DIR}/lib/x64"  "${CUDA_TOOLKIT_ROOT_DIR}/lib/win32")
-        list(APPEND mxnet_LINKER_LIBS "${CUDA_cusolver_LIBRARY}/../cusolver.lib") # For cusolver
-        link_directories(${CUDA_TOOLKIT_ROOT_DIR}/lib/win32)
-        link_directories(${CUDA_TOOLKIT_ROOT_DIR}/lib/x64)
+      if(ENABLE_CUDA_RTC)
+        FIND_LIBRARY(CUDA_nvrtc_LIBRARY nvrtc "${CUDA_TOOLKIT_ROOT_DIR}/lib/x64"  "${CUDA_TOOLKIT_ROOT_DIR}/lib/win32")
+        list(APPEND mxnet_LINKER_LIBS ${CUDA_nvrtc_LIBRARY})
+        set(CUDA_cuda_LIBRARY "${CUDA_nvrtc_LIBRARY}/../cuda.lib")
+        list(APPEND mxnet_LINKER_LIBS ${CUDA_cuda_LIBRARY})
+        add_definitions(-DMXNET_ENABLE_CUDA_RTC=1)
+      endif()
+      FIND_LIBRARY(CUDA_cufft_LIBRARY nvrtc "${CUDA_TOOLKIT_ROOT_DIR}/lib/x64"  "${CUDA_TOOLKIT_ROOT_DIR}/lib/win32")
+      list(APPEND mxnet_LINKER_LIBS "${CUDA_cufft_LIBRARY}/../cufft.lib") # For fft operator
+      FIND_LIBRARY(CUDA_cusolver_LIBRARY nvrtc "${CUDA_TOOLKIT_ROOT_DIR}/lib/x64"  "${CUDA_TOOLKIT_ROOT_DIR}/lib/win32")
+      list(APPEND mxnet_LINKER_LIBS "${CUDA_cusolver_LIBRARY}/../cusolver.lib") # For cusolver
+      link_directories(${CUDA_TOOLKIT_ROOT_DIR}/lib/win32)
+      link_directories(${CUDA_TOOLKIT_ROOT_DIR}/lib/x64)
     else(MSVC)
-        list(APPEND mxnet_LINKER_LIBS cufft cusolver)
-        if(ENABLE_CUDA_RTC)
-            list(APPEND mxnet_LINKER_LIBS nvrtc cuda)
-            add_definitions(-DMXNET_ENABLE_CUDA_RTC=1)
-        endif()
-        link_directories("${CUDA_TOOLKIT_ROOT_DIR}/lib64")
+      list(APPEND mxnet_LINKER_LIBS cufft cusolver)
+      if(ENABLE_CUDA_RTC)
+        list(APPEND mxnet_LINKER_LIBS nvrtc cuda)
+        add_definitions(-DMXNET_ENABLE_CUDA_RTC=1)
+      endif()
+      link_directories("${CUDA_TOOLKIT_ROOT_DIR}/lib64")
     endif()
     list(APPEND SOURCE ${cuda_objs} ${CUDA})
     add_definitions(-DMXNET_USE_CUDA=1)
     if(CUDA_LIBRARY_PATH)
-        if(IS_CONTAINER_BUILD)
+      if(IS_CONTAINER_BUILD)
         # In case of building on a production-like build container which may not have Cuda installed
         if(NOT CMAKE_SYSTEM_HAS_CUDA)
-            # Assuming building in a container that doesn't have CUDA installed (ie CPU-only build machine)
-            # so use the stub cuda driver shared library
-            if(EXISTS ${CUDA_LIBRARY_PATH}/stubs/libcuda.so)
+          # Assuming building in a container that doesn't have CUDA installed (ie CPU-only build machine)
+          # so use the stub cuda driver shared library
+          if(EXISTS ${CUDA_LIBRARY_PATH}/stubs/libcuda.so)
             link_directories(${CUDA_LIBRARY_PATH}/stubs)
-            endif()
+          endif()
         endif()
-        endif()
+      endif()
     endif()
- endif()
+  endif()
 endif()
 
 # unsupported: if caffe is a subdirectory of mxnet, load its CMakeLists.txt as well
@@ -750,13 +762,13 @@ if(USE_OPENCV AND OpenCV_VERSION_MAJOR GREATER 2)
     target_link_libraries(im2rec ${BEGIN_WHOLE_ARCHIVE} mxnet_static ${END_WHOLE_ARCHIVE})
   endif()
   target_link_libraries(im2rec
-    ${mxnet_LINKER_LIBS}
-    ${OpenCV_LIBS}
-    dmlc
-    ${pslite_LINKER_LIBS}
-    )
+          ${mxnet_LINKER_LIBS}
+          ${OpenCV_LIBS}
+          dmlc
+          ${pslite_LINKER_LIBS}
+          )
 else()
-    message(WARNING "OpenCV_VERSION_MAJOR: ${OpenCV_VERSION_MAJOR}, version 3 with imgcodecs \
+  message(WARNING "OpenCV_VERSION_MAJOR: ${OpenCV_VERSION_MAJOR}, version 3 with imgcodecs \
     is required for im2rec, im2rec will not be available")
 endif()
 
@@ -770,10 +782,10 @@ add_subdirectory(tests)
 
 include(GNUInstallDirs)
 install(TARGETS ${MXNET_INSTALL_TARGETS}
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-)
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        )
 
 # NOTE: Public headers will be installed into ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR}, see
 #       https://cmake.org/cmake/help/v3.0/variable/CMAKE_INSTALL_PREFIX.html
@@ -792,22 +804,22 @@ if (INSTALL_EXAMPLES)
 endif()
 
 if (USE_SIGNAL_HANDLER)
-    add_definitions(-DMXNET_USE_SIGNAL_HANDLER=1)
+  add_definitions(-DMXNET_USE_SIGNAL_HANDLER=1)
 endif()
 
 # AUTO_INSTALL_DIR -> Optional: specify post-build install direcory
 if(AUTO_INSTALL_DIR)
   # ---[ Install Includes
   add_custom_command(TARGET mxnet POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_CURRENT_SOURCE_DIR}/include ${AUTO_INSTALL_DIR}/include
-    )
+          COMMAND ${CMAKE_COMMAND} -E copy_directory
+          ${CMAKE_CURRENT_SOURCE_DIR}/include ${AUTO_INSTALL_DIR}/include
+          )
 
   # ---[ Install Examples
   add_custom_command(TARGET mxnet POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_CURRENT_SOURCE_DIR}/example ${AUTO_INSTALL_DIR}/example
-    )
+          COMMAND ${CMAKE_COMMAND} -E copy_directory
+          ${CMAKE_CURRENT_SOURCE_DIR}/example ${AUTO_INSTALL_DIR}/example
+          )
 endif()
 
 if(INSTALL_PYTHON_VERSIONS)
@@ -815,9 +827,9 @@ if(INSTALL_PYTHON_VERSIONS)
   foreach(version ${INSTALL_PYTHON_VERSIONS})
     set(outdir ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/python${version}/site-packages/mxnet)
     add_custom_command(TARGET mxnet POST_BUILD
-      COMMAND mkdir -p ${outdir}
-      COMMAND cp -ru ${CMAKE_CURRENT_SOURCE_DIR}/python/mxnet/* ${outdir}
-      )
+            COMMAND mkdir -p ${outdir}
+            COMMAND cp -ru ${CMAKE_CURRENT_SOURCE_DIR}/python/mxnet/* ${outdir}
+            )
   endforeach()
 endif()
 
