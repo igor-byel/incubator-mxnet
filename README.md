@@ -15,6 +15,11 @@
 <!--- specific language governing permissions and limitations -->
 <!--- under the License. -->
 
+Current configured to work  in single thread branch 1.5.x 
+configuration checked for mkldnn and mkl blas only
+
+
+
 <div align="center">
   <a href="https://mxnet.apache.org/"><img src="https://raw.githubusercontent.com/dmlc/web-data/master/mxnet/image/mxnet_logo_2.png"></a><br>
 </div>
