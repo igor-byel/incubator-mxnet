@@ -15,8 +15,10 @@
 <!--- specific language governing permissions and limitations -->
 <!--- under the License. -->
 
-Current configured to work  in single thread branch 1.5.x 
-configuration checked for mkldnn and mkl blas only
+Current branch configured to work  in single thread is 1.5.x 
+configuration tested for mkldnn and mkl blas only.
+
+Tested with cmake and clion
 
 
 
