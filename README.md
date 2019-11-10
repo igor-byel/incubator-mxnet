@@ -18,7 +18,7 @@
 Current branch configured to work  in single thread is 1.5.x 
 configuration tested for mkldnn and mkl blas only.
 
-Tested with cmake and clion
+Compilation tested with cmake and clion
 
 
 
